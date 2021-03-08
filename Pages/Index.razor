@@ -1,0 +1,192 @@
+﻿@page "/"
+
+@using DragDrop.Model
+@inject AppService appService
+@inject IJSRuntime JS;
+
+<style>
+    .no-drop {
+        background-color: white;
+    }
+
+    .can-drop {
+        background-color: blueviolet;
+    }
+</style>
+<h1>Hello, world!</h1>
+
+Welcome to your new app.
+
+<SurveyPrompt Title="How is Blazor working for you?" />
+<div class="row">
+    <div class="col-md-6">
+        @if (orders != null)
+        {
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Job # </th>
+                        <th>Type</th>
+                        <th>Arrvided</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var order in orders)
+                    {
+                        <tr class="draggable" draggable="true" @ondragend="@(() => HandleDragEnd())" @ondragstart="@(() => HandleDragStart(order))">
+                            <td>
+                                <button @onclick="() => ShowOrderDetail(order)" type="button" class="btn btn-link">@order.Job</button>
+                            </td>
+                            <td>@order.Type</td>
+                            <td>@order.ArriveDateTime.ToLongDateString()</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        @if (source != null)
+        {
+            <div>
+                <b>Selected order</b>
+                <span style="display:block">@source.Id</span>
+                <span style="display:block">@source.Job</span>
+                <span style="display:block">@source.ArriveDateTime.ToLongDateString()</span>
+            </div>
+        }
+    </div>
+    <div class="col-md-6">
+        @if (operators != null)
+        {
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Team</th>
+                        <th>Products</th>
+                        <th># Open</th>
+                        <th>Capacity</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var op in operators)
+                    {
+
+                        <tr id=@op.Id class="dropzone"
+                            ondragover="event.preventDefault();"
+                            ondragstart="event.dataTransfer.setData('', event.target.id);"
+                            @ondrop="(ev)=> HandleDrop(op)"
+                            @ondragenter="(ev)=>HandleDragEnter(op)"
+                            @ondragleave="(ev) =>HandleDragLeave(op)">
+                            <td>@op.Name</td>
+                            <td>@op.Team</td>
+                            <td>@string.Join(",", op.Products)</td>
+                            <td>@op.Open</td>
+                            <td>@op.Capicity</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+       
+        @if (target != null)
+        {
+            <div>
+                <b>Selected target</b>
+                <span style="display:block">@target.Id</span>
+                <span style="display:block">@target.Name</span>
+                <span style="display:block">@target.Open</span>
+            </div>
+        }
+    </div>
+</div>
+<IModal @ref="orderModal" Title="Order Detail" OkText="OK" OKAction="()=> HandleOKAction()">
+    <div>
+        <b>Selected order</b>       
+        <span style="display:block">@Selected.Id</span>
+        <span style="display:block">@Selected.Job</span>
+        <span style="display:block">@Selected.ArriveDateTime.ToLongDateString()</span>
+        <button class="btn btn-primary" @onclick="UnAllocatedOrder">UnAllocated</button>
+    </div>
+</IModal>
+@code{
+    public List<Order> orders;
+    public List<Operator> operators;
+    public string dropClass = "no-drop";
+    public Order source = null;
+    public Operator target = null;
+    public Order Selected = new Order();
+    public IModal orderModal;
+    protected override void OnInitialized()
+    {
+        orders = appService.GetOrderList();
+        operators = appService.GetOperatorList();
+    }
+
+    public void HandleDragStart(Order order)
+    {
+        source = order;
+    }
+    private void HandleDragEnd()
+    {
+        source = null;
+    }
+    private async void HandleDragEnter(Operator op)
+    {
+        target = op;
+        await JS.InvokeAsync<string>("changeBackground", op.Id, false);
+        dropClass = "can-drop";
+
+        //if (ListStatus == Container.Payload.Status) return;
+
+        //if (AllowedStatuses != null && !AllowedStatuses.Contains(Container.Payload.Status))
+        //{
+        //    dropClass = "no-drop";
+        //}
+        //else
+        //{
+        //    dropClass = "can-drop";
+        //}
+    }
+
+    private async void HandleDragLeave(Operator op)
+    {
+
+        await JS.InvokeAsync<string>("changeBackground", op.Id, true);
+        target = null;
+
+    }
+
+    private async void HandleDrop(Operator op)
+    {
+        // increase open and update products if not exist
+        var item = operators.First(x => x.Id == op.Id);
+        item.Open += 1;
+        if (!item.Products.Contains(source.Type))
+        {
+            var s = item.Products.ToList();
+            s.Add(source.Type);
+            item.Products = s.ToArray();
+        }
+        operators[operators.FindIndex(x => x.Id == op.Id)] = item;
+        var orderToDelete = orders.FirstOrDefault(x =>x.Id == source.Id);
+        orders.Remove(orderToDelete);
+        await JS.InvokeAsync<string>("changeBackground", op.Id, true);
+        StateHasChanged();
+
+    }
+    public void ShowOrderDetail(Order order)
+    {
+        Selected = order;
+        orderModal.Open();
+
+
+    }
+    public void HandleOKAction()
+    {
+
+    }
+
+    public void UnAllocatedOrder()
+    {
+    }
+}
